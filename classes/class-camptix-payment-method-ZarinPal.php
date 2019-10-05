@@ -11,11 +11,14 @@
  * @author 		Masoud Amini
  */
 
+
 if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
 
-class CampTix_Payment_Method_ZarinPal extends CampTix_Payment_Method {
+
+class CampTix_Payment_Method_ZarinPal extends CampTix_Payment_Method
+{
 	public $id = 'camptix_ZarinPal';
-	public $name = 'Zarinak';
+	public $name = 'ZarinPal';
 	public $description = 'CampTix payment methods for Iranian payment gateway ZarinPal.';
 	public $supported_currencies = array( 'IRR' );
 
@@ -25,7 +28,8 @@ class CampTix_Payment_Method_ZarinPal extends CampTix_Payment_Method {
 	 */
 	protected $options = array();
 
-	function camptix_init() {
+	function camptix_init()
+    {
 		$this->options = array_merge( array(
 			'merchant_id' => ''
 		), $this->get_payment_options() );
@@ -34,12 +38,14 @@ class CampTix_Payment_Method_ZarinPal extends CampTix_Payment_Method {
 		add_action( 'template_redirect', array( $this, 'template_redirect' ) );
 	}
 
-	function payment_settings_fields() {
+	function payment_settings_fields()
+    {
 		$this->add_settings_field_helper( 'merchant_id', 'Zarinpal Merchant ID', array( $this, 'field_text' ) );
 		
 	}
 
-	function validate_options( $input ) {
+	function validate_options( $input )
+    {
 		$output = $this->options;
 
 		if ( isset( $input['merchant_id'] ) )
@@ -49,7 +55,8 @@ class CampTix_Payment_Method_ZarinPal extends CampTix_Payment_Method {
 		return $output;
 	}
 
-	function template_redirect() {
+	function template_redirect()
+    {
 		if ( ! isset( $_REQUEST['tix_payment_method'] ) || 'camptix_ZarinPal' != $_REQUEST['tix_payment_method'] )
 			return;
 
@@ -64,7 +71,8 @@ class CampTix_Payment_Method_ZarinPal extends CampTix_Payment_Method {
 		}
 	}
 
-	function payment_return() {
+	function payment_return()
+    {
 	
 		global $camptix;
 
@@ -150,18 +158,25 @@ class CampTix_Payment_Method_ZarinPal extends CampTix_Payment_Method {
 		$order = $this->get_order( $payment_token );
 		
 		if($payload['Status'] == 'OK'){
-		// URL also Can be https://ir.zarinpal.com/pg/services/WebGate/wsdl
-		$client = new SoapClient('https://de.zarinpal.com/pg/services/WebGate/wsdl', array('encoding' => 'UTF-8')); 
 
-		$result = $client->PaymentVerification(
-						  	array(
-									'MerchantID'	 => $this->options['merchant_id'],
-									'Authority' 	 => $payload['Authority'],
-									'Amount'	 => $order['total']/10
-								)
-		);
+            $data = array('MerchantID' => $this->options['merchant_id'], 'Authority' => $payload['Authority'], 'Amount' => $order['total']);
+            $jsonData = json_encode($data);
+            $ch = curl_init('https://www.zarinpal.com/pg/rest/WebGate/PaymentVerification.json');
+            curl_setopt($ch, CURLOPT_USERAGENT, 'ZarinPal Rest Api v1');
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $jsonData);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+                'Content-Type: application/json',
+                'Content-Length: ' . strlen($jsonData)
+            ));
+            $result = curl_exec($ch);
+            $err = curl_error($ch);
+            curl_close($ch);
+            $result = json_decode($result, true);
 
-		if($result->Status == 100){
+
+		if($result['Status'] == 100){
 			//echo 'Transation success. RefID:'. $result->RefID;
 			$this->payment_result( $payment_token, CampTix_Plugin::PAYMENT_STATUS_COMPLETED );
 		} else {
@@ -233,50 +248,43 @@ class CampTix_Payment_Method_ZarinPal extends CampTix_Payment_Method {
 			$ZarinPal_args_array[] = '<input type="hidden" name="' . esc_attr( $key ) . '" value="' . esc_attr( $value ) . '" />';
 		}
 		//$url = $this->options['sandbox'] ? 'https://sandbox.ZarinPal.co.za/eng/process?aff=camptix-free' : 'https://www.ZarinPal.co.za/eng/process?aff=camptix-free';
-		
-		$client = new SoapClient('https://de.zarinpal.com/pg/services/WebGate/wsdl', array('encoding' => 'UTF-8')); 
 
-	$result = $client->PaymentRequest(
-						array(
-								'MerchantID' 	=> $payload['merchant_id'],
-								'Amount' 	=> $payload['amount']/10,
-								'Description' 	=> $payload['item_description'],
-								'Email' 	=> '',
-								'Mobile' 	=> '',
-								'CallbackURL' 	=> $payload['notify_url']
-							)
-	);
+        $data = array('MerchantID' => $payload['merchant_id'],
+            'Amount' => $payload['amount'],
+            'CallbackURL' => $payload['notify_url'],
+            'Description' => $payload['item_description']);
+        $jsonData = json_encode($data);
+        $ch = curl_init('https://www.zarinpal.com/pg/rest/WebGate/PaymentRequest.json');
+        curl_setopt($ch, CURLOPT_USERAGENT, 'ZarinPal Rest Api v1');
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $jsonData);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+            'Content-Type: application/json',
+            'Content-Length: ' . strlen($jsonData)
+        ));
+        $result = curl_exec($ch);
+        $err = curl_error($ch);
+        $result = json_decode($result, true);
+        curl_close($ch);
+        
 
 	//Redirect to URL You can do it also by creating a form
-	if($result->Status == 100)
+	if($result["Status"] == 100)
 	{
-		//Header('Location: https://www.zarinpal.com/pg/StartPay/'.$result->Authority);
-		
-		echo  '<div style="border: 1px solid;margin:auto;padding:15px 10px 15px 50px; width:600px;font-size:8pt; line-height:25px;font-family:tahoma; text-align:right; direction:rtl;color: #00529B;background-color: #BDE5F8">
-                         درحال اتصال به درگاه پرداخت زرین‌پال ...
-                        <br><br>
-						توضیحات: '.sprintf( __( 'سفارش جدید  %s', 'woothemes' ), get_bloginfo( 'name' ) ).'<br>
-						مبلغ: '.$order['total'].' ریال<br>
-						</div>';
-						
-		echo '<script type="text/javascript" src="https://cdn.zarinpal.com/zarinak/v1/checkout.js"></script>
-						<script>
-						Zarinak.setAuthority( ' . $result->Authority . ');
-						Zarinak.open();
-						</script>';
-		die('');
+		Header('Location: https://www.zarinpal.com/pg/StartPay/'.$result["Authority"]);
 	} else {
-		echo'ERR: '.$result->Status;
+		echo'ERR: '.$result["Status"];
 	}
 
-		/*echo '<div id="tix">
+		echo '<div id="tix">
 					<form action="' . $url . '" method="post" id="ZarinPal_payment_form">
 						' . implode( '', $ZarinPal_args_array ) . '
 						<script type="text/javascript">
 							document.getElementById("ZarinPal_payment_form").submit();
 						</script>
 					</form>
-				</div>';*/
+				</div>';
 		return;
 	}
 
